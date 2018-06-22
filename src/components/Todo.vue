@@ -52,7 +52,7 @@
             <td>{{todo.description}}</td>
             <td>{{todo.dueDate}}</td>
             <td><button class="btn-floating btn-small waves-effect waves-light" v-on:click="updateTodo(todo)"><i class="material-icons">edit</i></button>
-            <button class="btn-floating btn-small waves-effect waves-light" v-on:click="deleteTodo(todo._id)"><i class="material-icons">delete</i></button>
+            <button class="btn-floating btn-small waves-effect waves-light" v-on:click="deleteTodo(todo)"><i class="material-icons">delete</i></button>
             </td>
           </tr>
         </tbody>
@@ -158,7 +158,7 @@ export default {
             });
             
         },
-        deleteTodo(id) {
+        deleteTodo(todo) {
             swal({
                 title: 'Are you sure?',
                 text: "You won't be able to revert this!",
@@ -169,10 +169,20 @@ export default {
                 confirmButtonText: 'Yoi, delete it!'
             })
             .then((result) => {
+                
                 if (result.value) {
+                    var request = gapi.client.calendar.events.delete({
+                        'calendarId': 'primary',
+                        'eventId': `${todo.eventId}`
+                    })
+
+                    request.execute(function(event) {
+                        console.log(event)
+                    })
+
                     axios({
                         method:"delete",
-                        url:`http://localhost:3000/todos/delete/${id}`,
+                        url:`http://localhost:3000/todos/delete/${todo._id}`,
                         headers: {
                             token:localStorage.getItem("token")
                         }
@@ -192,6 +202,7 @@ export default {
         },
 
         updateTodo(todo) {
+            let self = this
             swal.mixin({
                 input: 'text',
                 confirmButtonText: 'Next &rarr;',
@@ -210,30 +221,57 @@ export default {
                 },
                 {
                     title: 'Due date',
-                    text: 'Please edit your todo\'s due date in text box below'
+                    text: 'Please edit your todo\'s due date in text box below',
+                    inputValue: todo.dueDate
                 }
                 ]).then((result) => {
                     console.log(result)
                 if (result.value) {
-                    axios({
-                        method:"put",
-                        url: `http://localhost:3000/todos/update/${todo._id}`,
-                        data: {
-                            task_name: result.value[0],
-                            description: result.value[1]
-                        },
-                        headers:{
-                            token: localStorage.getItem("token")
-                        }
+                    var event = gapi.client.calendar.events.get({
+                        "calendarId": 'primary',
+                        "eventId": `${todo.eventId}`
+                    });
+                    console.log(`${result.value[2]}:00Z`)
+                    event.summary = result.value[0]
+                    event.start = {
+                        'dateTime': `${result.value[2]}:00Z`
+                    }
+                    event.end = {
+                        'dateTime': `${result.value[2]}:00Z`
+                    }
+                   
+
+                    var request = gapi.client.calendar.events.patch({
+                        'calendarId': 'primary',
+                        'resource': event,
+                        'eventId' : `${todo.eventId}`
                     })
-                    .then(result=>{
-                        console.log(result)
-                        this.getTodo()
-                        swal({
-                            title: 'Todo Updated!',
-                            confirmButtonText: 'Great!'
+
+                    request.execute(function(event) {
+                        console.log(event)
+                        axios({
+                            method:"put",
+                            url: `http://localhost:3000/todos/update/${todo._id}`,
+                            data: {
+                                task_name: result.value[0],
+                                description: result.value[1],
+                                dueDate: result.value[2]
+                            },
+                            headers:{
+                                token: localStorage.getItem("token")
+                            }
+                        })
+                        .then(result=>{
+                            console.log(result)
+                            self.getTodo()
+                            swal({
+                                title: 'Todo Updated!',
+                                confirmButtonText: 'Great!'
+                            })
                         })
                     })
+                    print
+                    
                     
                 }
             })
