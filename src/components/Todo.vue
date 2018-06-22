@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div v-on:load="handleClientLoad()">
         <div class="fixed-action-btn">
             <button class="btn-floating btn-large waves-effect waves-light red pulse modal-trigger" data-target="modal1" v-on:click="modalJs()"><i class="material-icons">add</i></button>
         
@@ -16,10 +16,19 @@
                         <input type="text" id="description" v-model="description" >
                         <label for="description">Description</label>
                     </div>
-                    <div class="input-field col s12">
-                        <input type="date" id="date">
-                        <label for="date">Date</label>
-                    </div>   
+                    <div class="input-field col s12" v-if="isSignedIn == false">
+                        <div >
+                            <label for="date">Due Date</label>
+                            <p>Please login to your google account</p>
+                            <button v-on:click="handleAuthClick()">Login</button>
+                        </div>
+                    </div>
+                    <div class="input-field col s12" v-else>
+                        <div>
+                            <input type="datetime-local" id="date" v-model="date">
+                            <label for="date">Due Date</label>
+                        </div>
+                    </div>      
                 </div>
             </div>
             <div class="modal-footer">
@@ -41,10 +50,9 @@
           <tr>
             <td>{{todo.task_name}}</td>
             <td>{{todo.description}}</td>
-            <td>$0.87</td>
-            <td><button class="btn-floating btn-small waves-effect waves-light" v-on:click="deleteTodo"><i class="material-icons">edit</i></button>
-            <button class="btn-floating btn-small waves-effect waves-light"><i class="material-icons">delete</i></button>
-            
+            <td>{{todo.dueDate}}</td>
+            <td><button class="btn-floating btn-small waves-effect waves-light" v-on:click="updateTodo(todo)"><i class="material-icons">edit</i></button>
+            <button class="btn-floating btn-small waves-effect waves-light" v-on:click="deleteTodo(todo._id)"><i class="material-icons">delete</i></button>
             </td>
           </tr>
         </tbody>
@@ -53,25 +61,32 @@
     </div>
 </template>
 
-<script>
+<script >
 import axios from 'axios'
 
 export default {
-   created() {
-       if(localStorage.hasOwnProperty("token")){
-           this.getTodo()
-       }else{
-           this.$router.push("/")
-       }
-       
-   },
-   data() {
-       return{
-           todoList:[],
-           task_name:"",
-           description:""
-       }
-   },
+    created() {
+        if(localStorage.hasOwnProperty("token")){
+                this.getTodo()
+                 this.handleClientLoad()
+        }else{
+            this.$router.push("/")
+        }
+        
+    },
+    beforeMount() {
+        this.handleClientLoad()
+    },
+    data() {
+        return{
+            googleInit:null,
+            isSignedIn:false,
+            todoList:[],
+            task_name:"",
+            description:"",
+            date:""
+        }
+    },
     methods:{
         getTodo() {
             axios({
@@ -91,25 +106,173 @@ export default {
             var instances = M.Modal.init(elems);
         },
         addTodo() {
-            axios({
-                method:"post",
-                url:"http://localhost:3000/todos/add",
-                data:{
-                    task_name:this.task_name,
-                    description:this.description
+            let self = this
+            var event = {
+                'summary': this.task_name,
+                'location': 'kedoya',
+                'start': {
+                'dateTime': `${this.date}:00Z`,
                 },
-                headers: {
-                    token: localStorage.getItem("token")
+                'end': {
+                'dateTime': `${this.date}:00Z`,
+                
+                },
+                'reminders': {
+                'useDefault': false,
+                'overrides': [
+                    {'method': 'email', 'minutes': 24 * 60},
+                    {'method': 'popup', 'minutes': 10}
+                ]
+                }
+            };
+
+            var request = gapi.client.calendar.events.insert({
+                'calendarId': 'primary',
+                'resource': event
+            })
+            request.execute(function(event) {
+                axios({
+                    method:"post",
+                    url:"http://localhost:3000/todos/add",
+                    data:{
+                        task_name:self.task_name,
+                        description:self.description,
+                        dueDate:self.date,
+                        eventId:event.id
+                    },
+                    headers: {
+                        token: localStorage.getItem("token")
+                    }
+                })
+                .then(response=>{
+                    self.task_name=""
+                    self.description=""
+                    self.getTodo()
+                    swal({
+                        type: 'success',
+                        title:'Todo Succesfully Added !',
+                        text:'Let\'s do it!! ',
+                        customClass: 'animated bounceInLeft'
+                    })
+                })
+            });
+            
+        },
+        deleteTodo(id) {
+            swal({
+                title: 'Are you sure?',
+                text: "You won't be able to revert this!",
+                type: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yoi, delete it!'
+            })
+            .then((result) => {
+                if (result.value) {
+                    axios({
+                        method:"delete",
+                        url:`http://localhost:3000/todos/delete/${id}`,
+                        headers: {
+                            token:localStorage.getItem("token")
+                        }
+                    })
+                    .then(result=>{
+                        this.getTodo()
+                        swal(
+                            'Deleted!',
+                            'Your file has been deleted.',
+                            'success'
+                        )
+                    })
+                    
                 }
             })
-            .then(response=>{
-                this.task_name=""
-                this.description=""
-                this.getTodo()
+            
+        },
+
+        updateTodo(todo) {
+            swal.mixin({
+                input: 'text',
+                confirmButtonText: 'Next &rarr;',
+                showCancelButton: true,
+                progressSteps: ['1', '2', '3']
+                }).queue([
+                {
+                    title: 'Todo Name',
+                    text: 'Please edit your todo in text box below ',
+                    inputValue: todo.task_name
+                },
+                {
+                    title: 'Description',
+                    text: 'Please edit your todo\'s description in text box below',
+                    inputValue: todo.description
+                },
+                {
+                    title: 'Due date',
+                    text: 'Please edit your todo\'s due date in text box below'
+                }
+                ]).then((result) => {
+                    console.log(result)
+                if (result.value) {
+                    axios({
+                        method:"put",
+                        url: `http://localhost:3000/todos/update/${todo._id}`,
+                        data: {
+                            task_name: result.value[0],
+                            description: result.value[1]
+                        },
+                        headers:{
+                            token: localStorage.getItem("token")
+                        }
+                    })
+                    .then(result=>{
+                        console.log(result)
+                        this.getTodo()
+                        swal({
+                            title: 'Todo Updated!',
+                            confirmButtonText: 'Great!'
+                        })
+                    })
+                    
+                }
             })
         },
-        deleteTodo() {
+        handleClientLoad() {
+            console.log("handle=========")
+            let self= this
+            gapi.load('client:auth2', function(){
+                 gapi.client.init({
+                    apiKey: 'AIzaSyC7X0EKZY4B6crDLpGwuXtijgyhiYxFCFU',
+                    clientId: '882896681395-01e5e411kq7bo3lha4bfa9sl1ksia7o6.apps.googleusercontent.com',
+                    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+                    scope: "https://www.googleapis.com/auth/calendar"
+                    }).then(function () {
+                        console.log("masuks kah")
+                    // Listen for sign-in state changes.
+                    gapi.auth2.getAuthInstance().isSignedIn.listen(self.updateSigninStatus);
+
+                    // Handle the initial sign-in state.
+                    self.updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());;
+                    self.googleInit = true
+                });
+
+            });
+        },
+        updateSigninStatus(isSignedIn) {
+            this.isSignedIn = isSignedIn
+            console.log(this.isSignedIn,"ccc")
+            if(isSignedIn) {
+                console.log("horeee")
+            }
+        },
+        handleAuthClick() {
+            console.log(this.googleInit)
+            if(this.googleInit) {
+                gapi.auth2.getAuthInstance().signIn();
+            }
             
+                
         }
     }
 }
