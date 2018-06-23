@@ -1,15 +1,16 @@
 <template>
     <div v-on:load="handleClientLoad()">
         <div class="fixed-action-btn">
-            <button class="btn-floating btn-large waves-effect waves-light red pulse modal-trigger" data-target="modal1" v-on:click="modalJs()"><i class="material-icons">add</i></button>
+            <button class="btn-floating btn-large waves-effect waves-light  red lighten-2 pulse modal-trigger" data-target="modal1" v-on:click="modalJs()"><i class="material-icons">add</i></button>
         
         </div>
-        <div id="modal1" class="modal">
+        <div id="modal1" class="modal modal-fixed-footer">
             <div class="modal-content">
                 Add new Todo
                 <div class="row">
                     <div class="input-field col s12">
-                        <input type="text" id="task_name" v-model="task_name">
+                        <input type="text" id="task_name" v-model="task_name" name="task_name" v-validate="'required'">
+                        <span class="helper-text">{{errors.first("task_name")}}</span>
                         <label for="task_name">Task Name</label>
                     </div>
                     <div class="input-field col s12">
@@ -23,16 +24,27 @@
                             <button v-on:click="handleAuthClick()">Login</button>
                         </div>
                     </div>
-                    <div class="input-field col s12" v-else>
-                        <div>
-                            <input type="datetime-local" id="date" v-model="date">
-                            <label for="date">Due Date</label>
+                    <div v-else>
+                        <div class="input-field col s12" >
+                            <div>
+                                <label for="date">Due Date</label>
+                                <input type="datetime-local" id="date" v-model="date">
+                                
+                            </div>
                         </div>
-                    </div>      
+                        <div class="input-field col s12">
+                            <div >
+                                <label for="reminder">Remind me</label>
+                                <input type="number" id="reminder" placeholder="example: 1 (means 1 day before due date)" v-model.number="reminder">
+                            
+                            </div>
+                        </div>
+                    </div>
+                              
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="modal-close waves-effect waves-green btn-flat" v-on:click="addTodo()">submit</button>
+                <button class="modal-close waves-effect waves-green btn" v-on:click="addTodo()">submit</button>
             </div>
         </div>
 
@@ -52,7 +64,7 @@
             <td>{{todo.description}}</td>
             <td>{{todo.dueDate}}</td>
             <td><button class="btn-floating btn-small waves-effect waves-light" v-on:click="updateTodo(todo)"><i class="material-icons">edit</i></button>
-            <button class="btn-floating btn-small waves-effect waves-light" v-on:click="deleteTodo(todo)"><i class="material-icons">delete</i></button>
+            <button class="btn-floating btn-small waves-effect red waves-light" v-on:click="deleteTodo(todo)"><i class="material-icons">delete</i></button>
             </td>
           </tr>
         </tbody>
@@ -84,7 +96,8 @@ export default {
             todoList:[],
             task_name:"",
             description:"",
-            date:""
+            date:"",
+            reminder:1
         }
     },
     methods:{
@@ -107,56 +120,68 @@ export default {
         },
         addTodo() {
             let self = this
-            var event = {
-                'summary': this.task_name,
-                'location': 'kedoya',
-                'start': {
-                'dateTime': `${this.date}:00Z`,
-                },
-                'end': {
-                'dateTime': `${this.date}:00Z`,
-                
-                },
-                'reminders': {
-                'useDefault': false,
-                'overrides': [
-                    {'method': 'email', 'minutes': 24 * 60},
-                    {'method': 'popup', 'minutes': 10}
-                ]
-                }
-            };
+            this.$validator.validate().then(result=>{
+                if(!result) {
+                    swal(
+                        "Warning!",
+                        "Task Name required",
+                        "warning"
+                    )
+                }else{
+                    var event = {
+                        'summary': this.task_name,
+                        'location': 'kedoya',
+                        'start': {
+                        'dateTime': `${this.date}:00Z`,
+                        },
+                        'end': {
+                        'dateTime': `${this.date}:00Z`,
+                        
+                        },
+                        'reminders': {
+                        'useDefault': false,
+                        'overrides': [
+                            {'method': 'email', 'minutes': this.reminder * 24 * 60},
+                            {'method': 'popup', 'minutes': 10}
+                        ]
+                        }
+                    };
 
-            var request = gapi.client.calendar.events.insert({
-                'calendarId': 'primary',
-                'resource': event
-            })
-            request.execute(function(event) {
-                axios({
-                    method:"post",
-                    url:"http://localhost:3000/todos/add",
-                    data:{
-                        task_name:self.task_name,
-                        description:self.description,
-                        dueDate:self.date,
-                        eventId:event.id
-                    },
-                    headers: {
-                        token: localStorage.getItem("token")
-                    }
-                })
-                .then(response=>{
-                    self.task_name=""
-                    self.description=""
-                    self.getTodo()
-                    swal({
-                        type: 'success',
-                        title:'Todo Succesfully Added !',
-                        text:'Let\'s do it!! ',
-                        customClass: 'animated bounceInLeft'
+                    var request = gapi.client.calendar.events.insert({
+                        'calendarId': 'primary',
+                        'resource': event
                     })
-                })
-            });
-            
+                    request.execute(function(event) {
+                        axios({
+                            method:"post",
+                            url:"http://localhost:3000/todos/add",
+                            data:{
+                                task_name:self.task_name,
+                                description:self.description,
+                                dueDate:self.date,
+                                eventId:event.id
+                            },
+                            headers: {
+                                token: localStorage.getItem("token")
+                            }
+                        })
+                        .then(response=>{
+                            self.task_name=""
+                            self.description=""
+                            self.dueDate=""
+                            self.getTodo()
+                            swal({
+                                type: 'success',
+                                title:'Todo Succesfully Added !',
+                                text:'Let\'s do it!! ',
+                                customClass: 'animated bounceInLeft'
+                            })
+                        })
+                    });
+        
+                }
+            })
+                       
         },
         deleteTodo(todo) {
             swal({
@@ -319,5 +344,7 @@ export default {
 </script>
 
 <style scoped>
-
+.helper-text{
+    color:red
+}
 </style>
